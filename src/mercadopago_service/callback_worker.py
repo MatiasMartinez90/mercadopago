@@ -8,8 +8,8 @@ from .config import get_settings
 from .database import Pool, create_pool
 from .repository import (
     claim_callbacks,
-    mark_callback_delivered,
     mark_callback_dead_letter,
+    mark_callback_delivered,
     reschedule_callback,
 )
 from .security import sign_callback

@@ -20,6 +20,5 @@ async def create_pool(settings: Settings) -> Pool:
 
 @asynccontextmanager
 async def transaction(pool: Pool) -> AsyncIterator[asyncpg.Connection]:
-    async with pool.acquire() as connection:
-        async with connection.transaction():
-            yield connection
+    async with pool.acquire() as connection, connection.transaction():
+        yield connection
