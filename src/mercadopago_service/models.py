@@ -4,11 +4,13 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 
 PaymentStatus = Literal[
+    "creating",
     "pending",
     "approved",
     "rejected",
     "cancelled",
     "refunded",
+    "failed",
 ]
 
 
@@ -63,3 +65,23 @@ class PaymentIntent(BaseModel):
 
 class DemoSettlement(BaseModel):
     outcome: Literal["approved", "rejected"]
+
+
+class PaymentPreference(BaseModel):
+    checkout_url: str
+    status_token: str
+    status: PaymentStatus
+    amount: int
+    currency: str
+    expires_at: datetime
+    sandbox: bool
+
+
+class PaymentStatusView(BaseModel):
+    tenant_id: str
+    external_reference: str
+    status: PaymentStatus
+    amount: int
+    currency: str
+    expires_at: datetime
+    sandbox: bool

@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     mercado_pago_api_url: str = "https://api.mercadopago.com"
     statement_descriptor: str = "COMMERCE"
     webhook_max_skew_seconds: int = Field(default=300, ge=30, le=900)
+    callback_allowed_hosts: str = "api.example.com"
+    callback_max_attempts: int = Field(default=12, ge=1, le=50)
+
+    def allowed_callback_hosts(self) -> set[str]:
+        return {
+            value.strip().lower()
+            for value in self.callback_allowed_hosts.split(",")
+            if value.strip()
+        }
 
     @model_validator(mode="after")
     def validate_provider_credentials(self) -> "Settings":
@@ -35,6 +44,10 @@ class Settings(BaseSettings):
             self.api_key + self.link_secret + self.callback_signing_secret
         ):
             raise ValueError("production secrets must be explicitly configured")
+        if self.environment == "production" and not self.public_url.startswith("https://"):
+            raise ValueError("production public URL must use HTTPS")
+        if self.environment == "production" and not self.allowed_callback_hosts():
+            raise ValueError("production callback allowlist cannot be empty")
         if self.provider == "mercado_pago" and (
             not self.mercado_pago_access_token or not self.mercado_pago_webhook_secret
         ):

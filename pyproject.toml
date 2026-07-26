@@ -32,6 +32,7 @@ packages = ["src/mercadopago_service"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["integration: requires disposable PostgreSQL"]
 
 [tool.ruff]
 line-length = 100
