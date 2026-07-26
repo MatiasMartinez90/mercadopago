@@ -19,6 +19,7 @@ RUN groupadd --gid 10001 app \
 WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY --chown=app:app src ./src
+COPY --chown=app:app db ./db
 USER 10001:10001
 
 EXPOSE 8080
