@@ -35,9 +35,10 @@ class Settings(BaseSettings):
             self.api_key + self.link_secret + self.callback_signing_secret
         ):
             raise ValueError("production secrets must be explicitly configured")
-        if self.provider == "mercado_pago":
-            if not self.mercado_pago_access_token or not self.mercado_pago_webhook_secret:
-                raise ValueError("Mercado Pago credentials are required for the real provider")
+        if self.provider == "mercado_pago" and (
+            not self.mercado_pago_access_token or not self.mercado_pago_webhook_secret
+        ):
+            raise ValueError("Mercado Pago credentials are required for the real provider")
         return self
 
 
