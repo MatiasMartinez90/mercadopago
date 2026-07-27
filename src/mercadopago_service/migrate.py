@@ -21,7 +21,11 @@ def migration_up(path: Path) -> str:
 
 
 async def migrate() -> None:
-    connection = await asyncpg.connect(get_settings().database_url, command_timeout=30)
+    connection = await asyncpg.connect(
+        get_settings().database_url,
+        command_timeout=30,
+        statement_cache_size=0,
+    )
     try:
         await connection.execute(
             """

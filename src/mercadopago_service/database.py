@@ -14,6 +14,7 @@ async def create_pool(settings: Settings) -> Pool:
         min_size=1,
         max_size=10,
         command_timeout=10,
+        statement_cache_size=0,
         max_inactive_connection_lifetime=300,
     )
 
