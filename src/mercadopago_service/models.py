@@ -11,6 +11,7 @@ PaymentStatus = Literal[
     "cancelled",
     "refunded",
     "failed",
+    "expired",
 ]
 
 

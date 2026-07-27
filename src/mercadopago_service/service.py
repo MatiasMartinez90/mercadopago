@@ -1,7 +1,7 @@
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from uuid import UUID
 
 from .config import Settings
@@ -122,11 +122,17 @@ async def create_payment(
     )
     try:
         result = await provider.create_preference(preference)
+        checkout_url = result.checkout_url
+        if provider.name == "demo":
+            token = status_token(intent, settings.link_secret)
+            checkout_url = (
+                f"{settings.public_url.rstrip('/')}/demo-checkout/{quote(token, safe='')}"
+            )
         intent = await attach_preference(
             pool,
             intent_id=UUID(str(intent["id"])),
             provider_preference_id=result.provider_preference_id,
-            checkout_url=result.checkout_url,
+            checkout_url=checkout_url,
             sandbox=result.sandbox,
         )
     except Exception:

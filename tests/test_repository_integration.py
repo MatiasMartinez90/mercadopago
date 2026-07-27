@@ -4,14 +4,18 @@ from datetime import UTC, datetime, timedelta
 import asyncpg
 import pytest
 
+from mercadopago_service.config import Settings
+from mercadopago_service.models import CreatePaymentIntent
 from mercadopago_service.repository import (
     IdempotencyConflict,
     apply_status,
     attach_preference,
+    expire_intent,
     finish_event,
     register_event,
     reserve_intent,
 )
+from mercadopago_service.service import create_payment, settle_demo
 
 pytestmark = pytest.mark.integration
 
@@ -155,3 +159,68 @@ async def test_failed_provider_event_can_be_retried(pool):
         "SELECT processing_attempts FROM payment_events WHERE id = $1",
         event_id,
     ) == 2
+
+
+@pytest.mark.asyncio
+async def test_demo_preference_token_can_settle_same_intent(pool):
+    settings = Settings(
+        environment="test",
+        provider="demo",
+        public_url="https://payments.example.com",
+        database_url="postgresql://unused",
+        callback_allowed_hosts="consumer.example.com",
+    )
+    payload = CreatePaymentIntent.model_validate({
+        "tenant_id": "test-store",
+        "external_reference": "order:demo-1",
+        "amount": 15000,
+        "currency": "ARS",
+        "description": "Pedido demo",
+        "items": [{
+            "reference": "product-1",
+            "title": "Producto",
+            "quantity": 1,
+            "unit_price": 15000,
+        }],
+        "success_url": "https://consumer.example.com/success",
+        "pending_url": "https://consumer.example.com/pending",
+        "failure_url": "https://consumer.example.com/failure",
+        "callback_url": "https://consumer.example.com/payment-events",
+        "expires_at": datetime.now(UTC) + timedelta(minutes=30),
+    })
+    preference = await create_payment(
+        pool,
+        settings,
+        payload,
+        "demo-checkout-integration-key",
+    )
+    assert preference["checkout_url"].startswith(
+        "https://payments.example.com/demo-checkout/"
+    )
+    settled = await settle_demo(pool, settings, preference["status_token"], "approved")
+    assert settled["status"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_expiration_is_idempotent_and_emits_one_callback(pool):
+    kwargs = {
+        **intent_kwargs(),
+        "consumer_reference": "order:expired",
+        "idempotency_key": "checkout-order-expired-key",
+        "expires_at": datetime.now(UTC) - timedelta(seconds=1),
+    }
+    intent, _ = await reserve_intent(pool, **kwargs)
+    await attach_preference(
+        pool,
+        intent_id=intent["id"],
+        provider_preference_id="demo-pref-expired",
+        checkout_url="https://payments.example.com/demo/expired",
+        sandbox=True,
+    )
+    first = await expire_intent(pool, intent["id"])
+    repeated = await expire_intent(pool, intent["id"])
+    assert first["status"] == repeated["status"] == "expired"
+    assert await pool.fetchval(
+        "SELECT count(*) FROM callback_outbox WHERE payment_intent_id = $1",
+        intent["id"],
+    ) == 1

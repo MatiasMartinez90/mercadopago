@@ -14,6 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/home/app/.local/bin:$PATH
 
+RUN python -m pip uninstall --yes pip setuptools wheel
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home app
 WORKDIR /app
