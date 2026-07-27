@@ -19,6 +19,19 @@ def retry_delay(attempt: int) -> int:
     return min(3600, 5 * (2 ** min(max(attempt - 1, 0), 9)))
 
 
+def serialize_payload(value: object) -> bytes:
+    if isinstance(value, str):
+        value = json.loads(value)
+    if not isinstance(value, dict):
+        raise TypeError("callback payload must be a JSON object")
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+
 async def deliver_callback(
     client: httpx.AsyncClient,
     pool: Pool,
@@ -27,23 +40,18 @@ async def deliver_callback(
     signing_secret: str,
     max_attempts: int,
 ) -> None:
-    payload = json.dumps(
-        row["payload"],
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
-    timestamp = int(time.time())
-    headers = {
-        "content-type": "application/json",
-        "idempotency-key": f"payment-callback-{row['id']}",
-        "x-payment-timestamp": str(timestamp),
-        "x-payment-signature": sign_callback(payload, timestamp, signing_secret),
-    }
     try:
+        payload = serialize_payload(row["payload"])
+        timestamp = int(time.time())
+        headers = {
+            "content-type": "application/json",
+            "idempotency-key": f"payment-callback-{row['id']}",
+            "x-payment-timestamp": str(timestamp),
+            "x-payment-signature": sign_callback(payload, timestamp, signing_secret),
+        }
         response = await client.post(row["callback_url"], content=payload, headers=headers)
         response.raise_for_status()
-    except (httpx.HTTPError, httpx.TimeoutException) as error:
+    except (httpx.HTTPError, httpx.TimeoutException, TypeError, ValueError) as error:
         code = type(error).__name__
         if row["attempts"] >= max_attempts:
             await mark_callback_dead_letter(
