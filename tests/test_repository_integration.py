@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 import asyncpg
 import pytest
 
+from mercadopago_service.config import Settings
+from mercadopago_service.models import CreatePaymentIntent
 from mercadopago_service.repository import (
     IdempotencyConflict,
     apply_status,
@@ -13,8 +15,6 @@ from mercadopago_service.repository import (
     register_event,
     reserve_intent,
 )
-from mercadopago_service.config import Settings
-from mercadopago_service.models import CreatePaymentIntent
 from mercadopago_service.service import create_payment, settle_demo
 
 pytestmark = pytest.mark.integration

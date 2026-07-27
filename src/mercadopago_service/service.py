@@ -1,8 +1,7 @@
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlparse
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from uuid import UUID
 
 from .config import Settings
