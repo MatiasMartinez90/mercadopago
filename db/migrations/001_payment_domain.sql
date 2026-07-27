@@ -15,7 +15,7 @@ CREATE TABLE payment_intents (
     status                   text NOT NULL DEFAULT 'creating'
                              CHECK (status IN (
                                  'creating', 'pending', 'approved', 'rejected',
-                                 'cancelled', 'refunded', 'failed'
+                                 'cancelled', 'refunded', 'failed', 'expired'
                              )),
     amount                   bigint NOT NULL CHECK (amount > 0),
     currency                 char(3) NOT NULL,

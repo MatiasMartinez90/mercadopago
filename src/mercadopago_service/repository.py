@@ -367,3 +367,61 @@ async def mark_callback_dead_letter(
         callback_id,
         error_code[:200],
     )
+
+
+async def list_reconcilable(pool: Pool, limit: int = 100) -> list[dict[str, Any]]:
+    rows = await pool.fetch(
+        """
+        SELECT * FROM payment_intents
+        WHERE status = 'pending'
+          AND updated_at <= now() - interval '2 minutes'
+        ORDER BY updated_at, id
+        LIMIT $1
+        """,
+        limit,
+    )
+    return [dict(row) for row in rows]
+
+
+async def expire_intent(pool: Pool, intent_id: UUID) -> dict[str, Any]:
+    async with transaction(pool) as connection:
+        row = await connection.fetchrow(
+            """
+            UPDATE payment_intents
+            SET status = 'expired', updated_at = now()
+            WHERE id = $1 AND status = 'pending' AND expires_at <= now()
+            RETURNING *
+            """,
+            intent_id,
+        )
+        if not row:
+            current = await connection.fetchrow(
+                "SELECT * FROM payment_intents WHERE id = $1",
+                intent_id,
+            )
+            if not current:
+                raise PaymentNotFound("payment intent not found")
+            return dict(current)
+        payload = {
+            "event": "payment.expired",
+            "payment_intent_id": str(row["id"]),
+            "tenant_id": row["tenant_id"],
+            "external_reference": row["consumer_reference"],
+            "status": "expired",
+            "amount": row["amount"],
+            "currency": row["currency"],
+            "occurred_at": row["updated_at"].isoformat(),
+        }
+        await connection.execute(
+            """
+            INSERT INTO callback_outbox (
+                payment_intent_id, callback_url, event_type, payload
+            )
+            VALUES ($1, $2, 'payment.expired', $3::jsonb)
+            ON CONFLICT (payment_intent_id, event_type) DO NOTHING
+            """,
+            row["id"],
+            row["callback_url"],
+            json.dumps(payload),
+        )
+        return dict(row)

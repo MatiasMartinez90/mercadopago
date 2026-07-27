@@ -1,7 +1,10 @@
 from contextlib import asynccontextmanager
+import html
+import json
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 
 from . import __version__
 from .config import Settings, get_settings
@@ -149,6 +152,85 @@ async def demo_settlement(
         return await settle_demo(pool, settings, token, payload.outcome)
     except (InvalidSignature, PaymentNotFound) as error:
         raise HTTPException(status_code=404, detail="payment not found") from error
+
+
+@app.get(
+    "/demo-checkout/{token}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def demo_checkout(
+    token: str,
+    pool: Annotated[Pool, Depends(pool_for)],
+    settings: Annotated[Settings, Depends(settings_for)],
+) -> HTMLResponse:
+    if settings.provider != "demo" or settings.environment == "production":
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        payment = await get_payment_status(pool, settings, token)
+    except (InvalidSignature, PaymentNotFound) as error:
+        raise HTTPException(status_code=404, detail="payment not found") from error
+    amount = f"{payment['currency']} {payment['amount']:,}".replace(",", ".")
+    safe_amount = html.escape(amount)
+    encoded_token = json.dumps(token)
+    document = f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Checkout de demostración</title>
+  <style>
+    :root {{ color-scheme: dark; font-family: system-ui,sans-serif }}
+    body {{ margin:0; min-height:100vh; display:grid; place-items:center; background:#090909; color:#f5f1e9 }}
+    main {{ width:min(520px,calc(100% - 32px)); padding:40px; box-sizing:border-box; border:1px solid #ffffff26; background:#121212 }}
+    small {{ color:#ff5b50; font-weight:800; letter-spacing:.14em; text-transform:uppercase }}
+    h1 {{ margin:14px 0; font:700 clamp(38px,9vw,64px)/.94 Georgia,serif; letter-spacing:-.05em }}
+    p {{ color:#aaa59d; line-height:1.6 }} strong {{ color:#f5f1e9 }}
+    div {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:28px }}
+    button {{ min-height:50px; border:1px solid #f5f1e9; background:#f5f1e9; color:#090909; font-weight:800; cursor:pointer }}
+    button:last-child {{ background:transparent; color:#f5f1e9 }}
+    #result {{ min-height:24px }}
+  </style>
+</head>
+<body><main>
+  <small>Proveedor demo</small>
+  <h1>{safe_amount}</h1>
+  <p>Este checkout simula la respuesta del proveedor en el ambiente de desarrollo.</p>
+  <div><button data-outcome="approved">Aprobar pago</button><button data-outcome="rejected">Rechazar</button></div>
+  <p id="result" role="status"></p>
+</main>
+<script>
+const token={encoded_token};
+document.querySelectorAll("button").forEach((button) => button.addEventListener("click", async () => {{
+  document.querySelectorAll("button").forEach((item) => item.disabled=true);
+  const result=document.getElementById("result");
+  result.textContent="Procesando…";
+  try {{
+    const response=await fetch(`/v1/demo/${{encodeURIComponent(token)}}`, {{
+      method:"POST", headers:{{"content-type":"application/json"}},
+      body:JSON.stringify({{outcome:button.dataset.outcome}})
+    }});
+    if (!response.ok) throw new Error();
+    const payment=await response.json();
+    result.textContent=payment.status==="approved" ? "Pago aprobado. Ya podés volver a la tienda." : "Pago rechazado.";
+  }} catch {{
+    result.textContent="No pudimos procesar la simulación.";
+    document.querySelectorAll("button").forEach((item) => item.disabled=false);
+  }}
+}}));
+</script></body></html>"""
+    return HTMLResponse(
+        document,
+        headers={
+            "cache-control": "no-store",
+            "content-security-policy": (
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+                "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+            ),
+            "x-content-type-options": "nosniff",
+            "referrer-policy": "no-referrer",
+        },
+    )
 
 
 @app.post("/webhooks/mercado-pago", status_code=status.HTTP_202_ACCEPTED, tags=["webhooks"])

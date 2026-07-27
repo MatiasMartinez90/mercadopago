@@ -34,18 +34,22 @@ reales. El endpoint demo queda deshabilitado automáticamente en producción.
 
 ## Ejecución
 
-Copiar `.env.example` a `.env`, configurar PostgreSQL y aplicar la sección
-`migrate:up` de cada archivo en `db/migrations` antes de iniciar procesos.
+Copiar `.env.example` a `.env`, configurar PostgreSQL y ejecutar el runner
+idempotente antes de iniciar procesos. El runner toma advisory lock, verifica
+checksums y aborta si una migración ya aplicada fue modificada.
 
 ```bash
 pip install -e ".[dev]"
+python -m mercadopago_service.migrate
 uvicorn mercadopago_service.main:app --host 0.0.0.0 --port 8080
 python -m mercadopago_service.callback_worker
+python -m mercadopago_service.reconciliation
 ```
 
 API y worker usan la misma imagen. En Kubernetes deben ejecutarse como
 Deployments separados, con el comando del segundo reemplazado por
 `python -m mercadopago_service.callback_worker`.
+La reconciliación se ejecuta como CronJob con concurrencia prohibida.
 
 ## Contrato y seguridad
 
